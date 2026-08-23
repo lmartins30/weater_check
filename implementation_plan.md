@@ -1,29 +1,28 @@
-# Plano de Melhoria de UX e Regras de Negócio (V2)
+# Plano de Expansão V3: Ventos, Umidade e Sistema Inteligente de Alertas
 
-O objetivo desta refatoração é transformar dados estatísticos crus em respostas de negócio claras. A pergunta principal a ser respondida pelo Dashboard agora é: **"Até qual dia no futuro eu posso confiar na previsão atual?"**
+Para dar muito mais valor ao Dashboard, vamos expandir a coleta de dados da Open-Meteo e transformar esses dados brutos em **Alertas Automáticos** para o usuário.
 
 ---
 
-## 1. Tradução da "Matriz de Confusão" (Precipitação)
-Vamos remover a sopa de letrinhas técnica e usar termos reais de impacto:
-- **VP (Verdadeiro Positivo) ➔ "Chuva Prevista e Confirmada"**: O modelo disse que choveria e choveu.
-- **VN (Verdadeiro Negativo) ➔ "Dias de Sol Acertados"**: O modelo disse que não choveria e fez sol.
-- **FP (Falso Positivo) ➔ "Alarme Falso"**: O modelo prometeu chuva, mas fez sol (frustrou quem desmarcou o passeio).
-- **FN (Falso Negativo) ➔ "Chuva Surpresa"**: O modelo prometeu sol, mas choveu (molhou quem saiu sem guarda-chuva).
+## 1. Expansão da API (`src/api/open_meteo.py`)
+A API da Open-Meteo possui centenas de parâmetros. Para o nosso contexto de negócio, adicionaremos:
+- **`wind_speed_10m`**: Velocidade do Vento a 10 metros do solo (km/h).
+- **`relative_humidity_2m`**: Umidade Relativa do Ar (%).
 
-> **Ação:** Substituímos as métricas por cards coloridos (Verde para acertos, Vermelho/Laranja para os erros) e adicionamos a métrica de "Confiabilidade Geral de Chuva" (Acertos Totais / Dias Totais).
+**Ações Técnicas:**
+- Adicionar essas chaves na URL da requisição.
+- Atualizar o `Pydantic Schema` (o contrato) para garantir que as listas de vento e umidade também venham no tamanho correto e validar seus tipos.
 
-## 2. Esclarecimento da Acurácia de Temperatura
-- Foi adicionado um card explicativo simples: *"Qual a porcentagem de vezes que o modelo errou por, no máximo, 2°C (para mais ou para menos)?"*
-- Destacamos o maior erro de temperatura (diferença de graus) e em qual dia/hora ele ocorreu.
+## 2. Motor de Alertas (`src/pipeline/alerts.py`)
+Como a API histórica não devolve "textos de alerta" governamentais nativos, nós mesmos criaremos as nossas regras de negócio (Sistema Especialista):
+- **🌬️ Alerta de Ventania:** Se a previsão cruzar a linha de `50 km/h`.
+- **🌵 Alerta de Tempo Seco:** Se a umidade ficar abaixo de `20%` (Risco à saúde).
+- **🔥/❄️ Alerta de Risco Térmico:** Se a temperatura prever bater mais de `35°C` ou menos que `5°C`.
 
-## 3. O Novo Gráfico: Horizonte de Confiança (Lead Time)
-Para responder "até qual dia posso confiar?", criamos a métrica de **Decaimento da Previsão**:
-1. Criamos um gráfico de linha onde o Eixo X é "Dias de Antecedência" (1 a 7 dias) e o Eixo Y é a "Acurácia %".
-2. **Simulação Pedagógica:** Como a API gratuita não nos fornece *histórico de previsões*, criamos uma simulação realista atrelada aos dados reais para fins de demonstração.
-3. **Limiar de Confiança:** Traçamos uma linha vermelha horizontal no limite de `70%`. Onde a linha de acurácia cruza para baixo, exibimos um alerta gigante avisando até qual dia a previsão é segura.
+**Ações Técnicas:**
+- Criar a função `generate_alerts(df)` que varre o DataFrame procurando por picos que acionem essas regras e retorna uma lista de avisos com o dia e hora de ocorrência.
+- Escrever testes unitários em `tests/test_alerts.py`.
 
-## 4. UI/UX "Premium"
-- Uso de `st.expander` para esconder configurações técnicas.
-- Uso de colunas `st.columns` proporcionais para criar um estilo de "Cockpit".
-- Gráficos Plotly com legendas mais limpas.
+## 3. Visualização na Interface (`src/app/app.py`)
+- **Painel de Alertas:** Exibir uma tarja vermelha/amarela no topo do dashboard caso a função detecte algum risco iminente naquela semana.
+- **Gráfico Secundário (Vento/Umidade):** Um novo gráfico de linhas com 2 eixos Y, mostrando as oscilações da Umidade (em azul) e os picos de Vento (em cinza).
