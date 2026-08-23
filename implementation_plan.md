@@ -1,28 +1,29 @@
-# Plano de Expansão V3: Ventos, Umidade e Sistema Inteligente de Alertas
+# Plano de Expansão V3.1: Ventos e Umidade na Análise de Confiabilidade
 
-Para dar muito mais valor ao Dashboard, vamos expandir a coleta de dados da Open-Meteo e transformar esses dados brutos em **Alertas Automáticos** para o usuário.
+Atendendo ao pedido, removemos a ideia do sistema de alertas avulso e vamos tratar o Vento e a Umidade exatamente da mesma forma que tratamos a Chuva: avaliando a **Confiabilidade da Previsão** através de métricas de acerto e erro.
 
 ---
 
-## 1. Expansão da API (`src/api/open_meteo.py`)
-A API da Open-Meteo possui centenas de parâmetros. Para o nosso contexto de negócio, adicionaremos:
-- **`wind_speed_10m`**: Velocidade do Vento a 10 metros do solo (km/h).
-- **`relative_humidity_2m`**: Umidade Relativa do Ar (%).
+## 1. Expansão da API e Limpeza (`src/api` e `src/pipeline`)
+- Adicionar **`wind_speed_10m`** e **`relative_humidity_2m`** na chamada da Open-Meteo.
+- Atualizar o `Pydantic Schema` para as novas listas.
+- Estender as rotinas de limpeza no Pandas para preencher eventuais buracos nesses dados novos (ex: usar a mesma lógica de interpolação da temperatura).
 
-**Ações Técnicas:**
-- Adicionar essas chaves na URL da requisição.
-- Atualizar o `Pydantic Schema` (o contrato) para garantir que as listas de vento e umidade também venham no tamanho correto e validar seus tipos.
+## 2. Simulação e Métricas (`src/pipeline/metrics.py`)
+- Gerar simulações sintéticas (adicionando ruído) para as previsões de Vento e Umidade, já que não temos previsões reais do passado.
+- Expandir a função de Matriz de Confusão para suportar o cálculo de acurácia de Vento e Umidade, utilizando os pontos de corte definidos (15km/h e 40%).
 
-## 2. Motor de Alertas (`src/pipeline/alerts.py`)
-Como a API histórica não devolve "textos de alerta" governamentais nativos, nós mesmos criaremos as nossas regras de negócio (Sistema Especialista):
-- **🌬️ Alerta de Ventania:** Se a previsão cruzar a linha de `50 km/h`.
-- **🌵 Alerta de Tempo Seco:** Se a umidade ficar abaixo de `20%` (Risco à saúde).
-- **🔥/❄️ Alerta de Risco Térmico:** Se a temperatura prever bater mais de `35°C` ou menos que `5°C`.
+## 3. Interface Visual (`src/app/app.py`)
+Vamos adicionar duas novas seções ao Dashboard que seguirão exatamente o mesmo padrão de design que usamos para a Chuva (com os 4 quadrantes):
 
-**Ações Técnicas:**
-- Criar a função `generate_alerts(df)` que varre o DataFrame procurando por picos que acionem essas regras e retorna uma lista de avisos com o dia e hora de ocorrência.
-- Escrever testes unitários em `tests/test_alerts.py`.
+- **Confiabilidade do Vento (limite: 15 km/h)**
+  - ✅ **Acertou o Vento**: Previu vento forte e ventou.
+  - 🍃 **Acertou Calmaria**: Previu pouco vento e assim foi.
+  - ❌ **Alarme Falso (Vento)**: Previu vento forte, mas não ventou.
+  - 💨 **Vento Surpresa**: Previu calmaria, mas ventou forte.
 
-## 3. Visualização na Interface (`src/app/app.py`)
-- **Painel de Alertas:** Exibir uma tarja vermelha/amarela no topo do dashboard caso a função detecte algum risco iminente naquela semana.
-- **Gráfico Secundário (Vento/Umidade):** Um novo gráfico de linhas com 2 eixos Y, mostrando as oscilações da Umidade (em azul) e os picos de Vento (em cinza).
+- **Confiabilidade da Umidade (Tempo Seco < 40%)**
+  - ✅ **Acertou Tempo Seco**: Previu seco e foi seco.
+  - 💧 **Acertou Tempo Úmido**: Previu umidade normal e assim foi.
+  - ❌ **Alarme Falso (Seca)**: Previu seco, mas ficou úmido.
+  - 🌵 **Seca Surpresa**: Previu umidade normal, mas ficou seco.
