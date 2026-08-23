@@ -14,6 +14,7 @@ echo Ativando ambiente virtual...
 call venv\Scripts\activate.bat
 
 echo Subindo o servidor do Streamlit...
+set PYTHONPATH=%cd%
 streamlit run src\app\app.py
 
 pause
