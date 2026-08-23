@@ -1,55 +1,29 @@
-# Dashboard de Avaliação de Previsões Meteorológicas - Plano de Implementação
+# Plano de Melhoria de UX e Regras de Negócio (V2)
 
-Este plano divide a construção do projeto em 3 fases principais baseadas na estrutura sugerida. Ele foi elaborado para seguir rigorosamente os guias de desenvolvimento contidos nos arquivos `.md` do repositório.
-
----
-
-## Fase 1: Integrações Externas (`src/api`)
-Foco na robustez das chamadas de rede, resiliência e contratos de dados.
-
-### 1.1 BrasilAPI (Geolocalização via CEP)
-- [ ] Criar o arquivo `src/api/brasil_api.py`.
-- [ ] Implementar a função para consumir o endpoint de CEP `v2`.
-- [ ] Configurar mecanismo de **Exponential Backoff** com a biblioteca `tenacity` (máx. 3 tentativas exclusivas para erros `5xx` e timeouts).
-- [ ] Criar exceções customizadas: `CEPNotFoundError` (para HTTP 404) e `CEPTimeoutError` (timeout após 10s).
-- [ ] Extrair estritamente `latitude` e `longitude` do JSON.
-- [ ] Criar o arquivo `tests/test_brasil_api.py` com mocks usando `pytest` para simular falhas e sucesso.
-
-### 1.2 Open-Meteo (Dados Climáticos)
-- [ ] Criar o arquivo `src/api/open_meteo.py`.
-- [ ] Configurar a função base para `archive-api.open-meteo.com` exigindo obrigatoriamente o parâmetro `timezone`.
-- [ ] Definir o schema `Pydantic` para o contrato de resposta, garantindo e tolerando as chaves: `time`, `temperature_2m` (NaN/None) e `precipitation` (NaN/None).
-- [ ] Garantir que o tamanho do array de tempo é igual ao das variáveis.
-- [ ] Criar `tests/test_open_meteo.py` com mocks para testar se a validação Pydantic funciona conforme esperado.
+O objetivo desta refatoração é transformar dados estatísticos crus em respostas de negócio claras. A pergunta principal a ser respondida pelo Dashboard agora é: **"Até qual dia no futuro eu posso confiar na previsão atual?"**
 
 ---
 
-## Fase 2: Processamento e Métricas (`src/pipeline`)
-Foco na limpeza dos dados e aplicação das regras de negócio do domínio.
+## 1. Tradução da "Matriz de Confusão" (Precipitação)
+Vamos remover a sopa de letrinhas técnica e usar termos reais de impacto:
+- **VP (Verdadeiro Positivo) ➔ "Chuva Prevista e Confirmada"**: O modelo disse que choveria e choveu.
+- **VN (Verdadeiro Negativo) ➔ "Dias de Sol Acertados"**: O modelo disse que não choveria e fez sol.
+- **FP (Falso Positivo) ➔ "Alarme Falso"**: O modelo prometeu chuva, mas fez sol (frustrou quem desmarcou o passeio).
+- **FN (Falso Negativo) ➔ "Chuva Surpresa"**: O modelo prometeu sol, mas choveu (molhou quem saiu sem guarda-chuva).
 
-### 2.1 Tratamento de Dados (Cleaning)
-- [ ] Criar arquivo `src/pipeline/cleaning.py` (usando Pandas ou Polars).
-- [ ] Implementar função que preenche valores nulos de **Precipitação** com `0.0`.
-- [ ] Implementar função para tratar **Temperatura**: interpolar linearmente buracos de até 2 horas consecutivas; dropar buracos maiores.
-- [ ] Criar testes unitários para confirmar que os buracos de dados são tratados corretamente.
+> **Ação:** Substituímos as métricas por cards coloridos (Verde para acertos, Vermelho/Laranja para os erros) e adicionamos a métrica de "Confiabilidade Geral de Chuva" (Acertos Totais / Dias Totais).
 
-### 2.2 Cálculos de Regras de Negócio
-- [ ] Criar arquivo `src/pipeline/metrics.py`.
-- [ ] Implementar o filtro da Janela de Previsão (Lead Time).
-- [ ] Função para calcular o **Erro Absoluto** da temperatura e sinalizar acertos (erro <= 2°C).
-- [ ] Função para gerar a **Matriz de Confusão de Precipitação** (VP, FP, FN, VN), considerando o limite de chuva `> 0.1mm`.
-- [ ] Testes exaustivos com dados sintéticos no `pytest` para garantir a precisão dos cálculos.
+## 2. Esclarecimento da Acurácia de Temperatura
+- Foi adicionado um card explicativo simples: *"Qual a porcentagem de vezes que o modelo errou por, no máximo, 2°C (para mais ou para menos)?"*
+- Destacamos o maior erro de temperatura (diferença de graus) e em qual dia/hora ele ocorreu.
 
----
+## 3. O Novo Gráfico: Horizonte de Confiança (Lead Time)
+Para responder "até qual dia posso confiar?", criamos a métrica de **Decaimento da Previsão**:
+1. Criamos um gráfico de linha onde o Eixo X é "Dias de Antecedência" (1 a 7 dias) e o Eixo Y é a "Acurácia %".
+2. **Simulação Pedagógica:** Como a API gratuita não nos fornece *histórico de previsões*, criamos uma simulação realista atrelada aos dados reais para fins de demonstração.
+3. **Limiar de Confiança:** Traçamos uma linha vermelha horizontal no limite de `70%`. Onde a linha de acurácia cruza para baixo, exibimos um alerta gigante avisando até qual dia a previsão é segura.
 
-## Fase 3: Interface Web (`src/app`)
-Foco na Experiência do Usuário (UX) e visualização com Streamlit.
-
-### 3.1 Camada de Cache
-- [ ] Implementar decorador `@st.cache_data` envolvendo a chamada da Open-Meteo usando as chaves `(latitude, longitude, start_date, end_date, past_days)`.
-
-### 3.2 Componentes Visuais e Fluxo
-- [ ] Criar `src/app/app.py`.
-- [ ] Inserir input de CEP com tratamento amigável (capturar a `CEPNotFoundError` da Fase 1 e exibir alerta amarelo sem quebrar o app).
-- [ ] Construir layout para exibir a matriz de confusão.
-- [ ] Plotar gráficos dinâmicos temporais usando `plotly` cruzando a curva da temperatura real com a curva prevista, realçando os acertos/erros.
+## 4. UI/UX "Premium"
+- Uso de `st.expander` para esconder configurações técnicas.
+- Uso de colunas `st.columns` proporcionais para criar um estilo de "Cockpit".
+- Gráficos Plotly com legendas mais limpas.
